@@ -250,6 +250,20 @@ export class CodexClient {
     return { threadId };
   }
 
+  /** Resume an existing thread from Codex history */
+  async resumeThread(params: Record<string, unknown> & { threadId: string }): Promise<{ threadId: string }> {
+    const result = await this.request("thread/resume", params);
+    const thread = result.thread as Record<string, unknown> | undefined;
+    const threadId = (thread?.id || result.threadId || result.id || params.threadId) as string;
+    if (!threadId) {
+      process.stderr.write(
+        `[codex-bridge] thread/resume response: ${JSON.stringify(result)}\n`,
+      );
+    }
+    this._activeThreadId = threadId;
+    return { threadId };
+  }
+
   /** Register an event listener */
   onEvent(callback: EventCallback): void {
     this.eventListeners.push(callback);

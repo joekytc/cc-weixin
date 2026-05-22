@@ -11,7 +11,7 @@
  * Codex builds.
  *
  * Known limitations:
- * - Codex TUI does not display turns injected by this bridge (Issue #15320)
+ * - Desktop/WebSocket mode can show injected turns; stdio mode is log-only
  * - Single-user routing: only the last active WeChat user gets responses
  */
 
@@ -34,6 +34,8 @@ import { CodexClient, type CodexEvent } from "./src/codex-client.js";
 const CODEX_WS_URL = process.env.CODEX_WS_URL || "stdio://";
 const VERSION = "0.2.1";
 const LOG_TOOLS = process.env.WEIXIN_CODEX_LOG_TOOLS !== "0";
+const RESUME_THREAD_ID = process.env.WEIXIN_CODEX_THREAD_ID || process.env.WEIXIN_CODEX_RESUME_THREAD_ID || "";
+const RESUME_CHAT_ID = process.env.WEIXIN_CODEX_THREAD_CHAT_ID || "";
 const RTK_DEVELOPER_INSTRUCTIONS = `Shell command policy:
 - All shell commands must run through RTK.
 - Use "rtk <original command>" for every shell command.
@@ -44,6 +46,35 @@ const RTK_DEVELOPER_INSTRUCTIONS = `Shell command policy:
 
 const STATE_DIR = process.env.WEIXIN_STATE_DIR || join(process.env.HOME || "~", ".claude", "channels", "weixin");
 const LOCK_FILE = join(STATE_DIR, "server-codex.lock");
+const THREADS_FILE = join(STATE_DIR, "codex-threads.json");
+
+interface CodexThreadState {
+  defaultThreadId?: string;
+  chats: Record<string, string>;
+}
+
+function loadThreadState(): CodexThreadState {
+  try {
+    if (!existsSync(THREADS_FILE)) return { chats: {} };
+    const parsed = JSON.parse(readFileSync(THREADS_FILE, "utf8")) as Partial<CodexThreadState>;
+    return {
+      defaultThreadId: typeof parsed.defaultThreadId === "string" ? parsed.defaultThreadId : undefined,
+      chats: parsed.chats && typeof parsed.chats === "object" ? parsed.chats as Record<string, string> : {},
+    };
+  } catch (err) {
+    process.stderr.write(`[weixin-codex] Failed to load thread state: ${err}\n`);
+    return { chats: {} };
+  }
+}
+
+function saveThreadState(state: CodexThreadState): void {
+  try {
+    mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(THREADS_FILE, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  } catch (err) {
+    process.stderr.write(`[weixin-codex] Failed to save thread state: ${err}\n`);
+  }
+}
 
 function acquireLock(): boolean {
   try {
@@ -422,6 +453,15 @@ async function main(): Promise<void> {
     // Continue running — MCP tools still work, bridge is just unavailable
   }
 
+  const threadState = loadThreadState();
+  if (RESUME_THREAD_ID) {
+    threadState.defaultThreadId = RESUME_THREAD_ID;
+    if (RESUME_CHAT_ID) {
+      threadState.chats[RESUME_CHAT_ID] = RESUME_THREAD_ID;
+    }
+    saveThreadState(threadState);
+  }
+
   let threadId: string | null = null;
 
   // Track which WeChat user triggered the current turn
@@ -451,6 +491,61 @@ async function main(): Promise<void> {
     collector.handleEvent(event);
   });
 
+  const openThread = async (chatId?: string): Promise<string | null> => {
+    const mappedThreadId = chatId ? threadState.chats[chatId] : undefined;
+    const desiredThreadId = mappedThreadId || threadState.defaultThreadId;
+
+    if (desiredThreadId && desiredThreadId === threadId) {
+      if (chatId && threadState.chats[chatId] !== desiredThreadId) {
+        threadState.chats[chatId] = desiredThreadId;
+        saveThreadState(threadState);
+      }
+      return desiredThreadId;
+    }
+
+    if (!desiredThreadId && threadId) {
+      if (chatId && threadState.chats[chatId] !== threadId) {
+        threadState.chats[chatId] = threadId;
+        threadState.defaultThreadId = threadId;
+        saveThreadState(threadState);
+        process.stderr.write(`[weixin-codex] Mapped ${chatId} -> ${threadId}\n`);
+      }
+      return threadId;
+    }
+
+    if (desiredThreadId) {
+      try {
+        const resumed = await codex.resumeThread({
+          threadId: desiredThreadId,
+          developerInstructions: RTK_DEVELOPER_INSTRUCTIONS,
+        });
+        threadId = resumed.threadId;
+        threadState.defaultThreadId = threadId;
+        if (chatId) threadState.chats[chatId] = threadId;
+        saveThreadState(threadState);
+        process.stderr.write(`[weixin-codex] Thread resumed: ${threadId}${chatId ? ` (${chatId})` : ""}\n`);
+        return threadId;
+      } catch (err) {
+        process.stderr.write(`[weixin-codex] Thread resume failed (${desiredThreadId}): ${err}\n`);
+      }
+    }
+
+    try {
+      const created = await codex.createThread({
+        developerInstructions: RTK_DEVELOPER_INSTRUCTIONS,
+      });
+      threadId = created.threadId;
+      threadState.defaultThreadId = threadId;
+      if (chatId) threadState.chats[chatId] = threadId;
+      saveThreadState(threadState);
+      process.stderr.write(`[weixin-codex] Thread created: ${threadId}${chatId ? ` (${chatId})` : ""}\n`);
+      return threadId;
+    } catch (err) {
+      process.stderr.write(`[weixin-codex] Thread create failed: ${err}\n`);
+      return null;
+    }
+  };
+
   if (codex.isConnected) {
     // Wait for App Server to reach idle state before starting poll loop.
     // Register idle-listener BEFORE createThread to avoid missing the event.
@@ -476,11 +571,7 @@ async function main(): Promise<void> {
 
     try {
       await codex.initialize();
-      const thread = await codex.createThread({
-        developerInstructions: RTK_DEVELOPER_INSTRUCTIONS,
-      });
-      threadId = thread.threadId;
-      process.stderr.write(`[weixin-codex] Thread created: ${threadId}\n`);
+      threadId = await openThread();
     } catch (err) {
       process.stderr.write(`[weixin-codex] App Server setup failed: ${err}\n`);
     }
@@ -546,6 +637,14 @@ async function main(): Promise<void> {
         return;
       }
 
+      const selectedThreadId = await openThread(msg.fromUserId);
+      if (!selectedThreadId) {
+        process.stderr.write(
+          `[weixin-codex] Codex thread unavailable — message from ${msg.fromUserId} queued only.\n`,
+        );
+        return;
+      }
+      threadId = selectedThreadId;
       currentChatId = msg.fromUserId;
 
       // Include sender's chat_id so the agent always knows who sent the message

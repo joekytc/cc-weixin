@@ -116,7 +116,9 @@ codex app-server (WebSockets)
 [weixin-codex] Standalone bridge mode.
 [weixin-codex] Connecting to Codex App Server at ws://127.0.0.1:4500...
 [codex-bridge] Connected to Codex App Server: ws://127.0.0.1:4500
-[weixin-codex] Thread created: ...
+[weixin-codex] Thread resumed: ...       ← 有历史会话时
+# 或
+[weixin-codex] Thread created: ...       ← 首次启动时
 [weixin-codex] App Server ready.          ← 或 "App Server ready (timeout)."
 [weixin-codex] Starting WeChat poll loop...
 [weixin] Starting message poll loop...    ← ✅ 出现这行表示完全就绪
@@ -172,6 +174,39 @@ $weixin-access policy allowlist
 3. 停止时运行 `~/cc-weixin/plugins/weixin/stop-codex.sh`
 
 默认 WebSocket desktop 模式下，可以在 Codex 桌面端查看微信会话；如果使用 `WEIXIN_CODEX_MODE=stdio`，则只通过 bridge 日志观察。
+
+### 恢复旧桌面会话
+
+bridge 会把微信用户和 Codex thread 的绑定保存到：
+
+```text
+~/.claude/channels/weixin/codex-threads.json
+```
+
+后续重启 `start-codex.sh` 时，会优先 `thread/resume` 旧会话，日志会显示：
+
+```text
+[weixin-codex] Thread resumed: 019e...
+```
+
+如果需要手动指定某个微信用户继续进入旧 Codex 会话，可以这样启动一次，bridge 会自动写入绑定文件：
+
+```bash
+WEIXIN_CODEX_THREAD_ID=019e... \
+WEIXIN_CODEX_THREAD_CHAT_ID=o9cq80_lbVQ0zxiaRUlUgPNttaSY@im.wechat \
+~/cc-weixin/plugins/weixin/start-codex.sh
+```
+
+也可以直接编辑 `codex-threads.json`：
+
+```json
+{
+  "defaultThreadId": "019e4da2-7960-7281-b2e1-5c7e1463edc0",
+  "chats": {
+    "o9cq80_lbVQ0zxiaRUlUgPNttaSY@im.wechat": "019e4da2-7960-7281-b2e1-5c7e1463edc0"
+  }
+}
+```
 
 ### 后台运行
 
