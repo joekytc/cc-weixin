@@ -236,8 +236,8 @@ export class CodexClient {
   }
 
   /** Start a new thread */
-  async createThread(): Promise<{ threadId: string }> {
-    const result = await this.request("thread/start", {});
+  async createThread(params: Record<string, unknown> = {}): Promise<{ threadId: string }> {
+    const result = await this.request("thread/start", params);
     // thread/start returns { thread: { id: "uuid", ... } }
     const thread = result.thread as Record<string, unknown> | undefined;
     const threadId = (thread?.id || result.threadId || result.id) as string;
@@ -304,9 +304,13 @@ export class CodexClient {
   /** Auto-respond to server-initiated approval requests so turns never block. */
   private handleServerRequest(req: JsonRpcServerRequest): void {
     let result: Record<string, unknown>;
+    const params = req.params || {};
 
     switch (req.method) {
       case "item/commandExecution/requestApproval":
+        if (typeof params.command === "string") {
+          process.stderr.write(`[codex-bridge] tool: shell approval ${params.command}\n`);
+        }
         result = { decision: "acceptForSession" };
         break;
       case "item/fileChange/requestApproval":

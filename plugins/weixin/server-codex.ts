@@ -33,6 +33,12 @@ import { CodexClient, type CodexEvent } from "./src/codex-client.js";
 
 const CODEX_WS_URL = process.env.CODEX_WS_URL || "stdio://";
 const VERSION = "0.2.1";
+const LOG_TOOLS = process.env.WEIXIN_CODEX_LOG_TOOLS !== "0";
+const RTK_DEVELOPER_INSTRUCTIONS = `Shell command policy:
+- All shell commands must run through RTK.
+- Use "rtk <original command>" for every shell command.
+- Examples: use "rtk pwd", "rtk ls", "rtk git status"; do not run "pwd", "ls", or "git status" directly.
+- If a command is blocked by a PreToolUse hook, retry once with the same command prefixed by "rtk ".`;
 
 // --- Single-instance lock ---
 
@@ -135,6 +141,66 @@ class ResponseCollector {
         }
         break;
       }
+    }
+  }
+}
+
+function shortJson(value: unknown, maxLen = 220): string {
+  try {
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    if (!text) return "";
+    return text.length > maxLen ? `${text.slice(0, maxLen)}...` : text;
+  } catch {
+    return String(value);
+  }
+}
+
+function logToolEvent(event: CodexEvent): void {
+  if (!LOG_TOOLS) return;
+
+  const item = event.params?.item as Record<string, unknown> | undefined;
+  if (!item) {
+    if (event.method === "item/mcpToolCall/progress") {
+      process.stderr.write(`[weixin-codex] tool-progress: ${shortJson(event.params?.message)}\n`);
+    } else if (
+      event.method === "command/exec/outputDelta" ||
+      event.method === "item/commandExecution/outputDelta"
+    ) {
+      const delta = shortJson(event.params?.delta, 120).replace(/\s+/g, " ").trim();
+      if (delta) process.stderr.write(`[weixin-codex] tool-output: ${delta}\n`);
+    }
+    return;
+  }
+
+  const phase = event.method === "item/started" ? "started" : event.method === "item/completed" ? "completed" : "";
+  if (!phase) return;
+
+  switch (item.type) {
+    case "commandExecution": {
+      const command = shortJson(item.command);
+      const status = item.status ? ` status=${item.status}` : "";
+      const code = item.exitCode !== null && item.exitCode !== undefined ? ` exit=${item.exitCode}` : "";
+      process.stderr.write(`[weixin-codex] tool: shell ${phase}${status}${code}: ${command}\n`);
+      break;
+    }
+    case "mcpToolCall": {
+      const serverName = shortJson(item.server, 80);
+      const tool = shortJson(item.tool, 80);
+      const status = item.status ? ` status=${item.status}` : "";
+      process.stderr.write(`[weixin-codex] tool: mcp ${phase}${status}: ${serverName}.${tool}\n`);
+      break;
+    }
+    case "dynamicToolCall": {
+      const namespace = item.namespace ? `${shortJson(item.namespace, 80)}.` : "";
+      const tool = shortJson(item.tool, 80);
+      const status = item.status ? ` status=${item.status}` : "";
+      process.stderr.write(`[weixin-codex] tool: dynamic ${phase}${status}: ${namespace}${tool}\n`);
+      break;
+    }
+    case "fileChange": {
+      const status = item.status ? ` status=${item.status}` : "";
+      process.stderr.write(`[weixin-codex] tool: fileChange ${phase}${status}\n`);
+      break;
     }
   }
 }
@@ -381,6 +447,7 @@ async function main(): Promise<void> {
     if (m === "turn/started" || m === "turn/completed" || m === "thread/status/changed") {
       process.stderr.write(`[weixin-codex] ${m}: ${JSON.stringify(event.params).slice(0, 120)}\n`);
     }
+    logToolEvent(event);
     collector.handleEvent(event);
   });
 
@@ -409,7 +476,9 @@ async function main(): Promise<void> {
 
     try {
       await codex.initialize();
-      const thread = await codex.createThread();
+      const thread = await codex.createThread({
+        developerInstructions: RTK_DEVELOPER_INSTRUCTIONS,
+      });
       threadId = thread.threadId;
       process.stderr.write(`[weixin-codex] Thread created: ${threadId}\n`);
     } catch (err) {
