@@ -49,7 +49,7 @@ Codex Plugin 是 Skills + MCP Server + App 的打包分发机制，本质是静�
 
 ```bash
 # 1. Clone 仓库到本地
-git clone https://github.com/qufei1993/cc-weixin.git ~/cc-weixin
+git clone https://github.com/joekytc/cc-weixin.git ~/cc-weixin
 
 # 2. 配置本地 marketplace（~/.agents/plugins/marketplace.json）
 # path 相对于 ~，替换为实际路径

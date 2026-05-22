@@ -37,7 +37,7 @@
 ### 第一步：Clone 仓库
 
 ```bash
-git clone https://github.com/qufei1993/cc-weixin.git ~/cc-weixin
+git clone https://github.com/joekytc/cc-weixin.git ~/cc-weixin
 ```
 
 > 可以 clone 到任意位置，后续配置中替换路径即可。

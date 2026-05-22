@@ -1,36 +1,46 @@
 #!/usr/bin/env bash
-# Start Codex App Server + Weixin bridge in one command.
-# Usage: ./start-codex.sh [ws://127.0.0.1:4500]
+# Start Weixin bridge for Codex.
 
-set -e
+set -euo pipefail
 
-WS_URL="${1:-ws://127.0.0.1:4500}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PID_FILE="${WEIXIN_CODEX_PID_FILE:-/private/tmp/weixin-codex-bridge.pid}"
+BUN="${BUN:-/opt/homebrew/bin/bun}"
+if [ -n "${CODEX_BIN:-}" ]; then
+  CODEX_EXEC="$CODEX_BIN"
+elif command -v codex >/dev/null 2>&1; then
+  CODEX_EXEC="$(command -v codex)"
+elif [ -x "/Applications/Codex.app/Contents/Resources/codex" ]; then
+  CODEX_EXEC="/Applications/Codex.app/Contents/Resources/codex"
+else
+  echo "[weixin] Codex executable not found." >&2
+  echo "[weixin] Set CODEX_BIN=/path/to/codex and retry." >&2
+  exit 1
+fi
 
-echo "[weixin] Starting Codex App Server at $WS_URL..."
-codex app-server --listen "$WS_URL" &
-APP_SERVER_PID=$!
-
-# Wait for app-server to be ready
-for i in $(seq 1 20); do
-  sleep 0.5
-  HTTP_URL="${WS_URL/ws:\/\//http://}"
-  if curl -sf "${HTTP_URL}/healthz" > /dev/null 2>&1; then
-    echo "[weixin] App Server ready."
-    break
+if [ -f "$PID_FILE" ]; then
+  old_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+  if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+    echo "[weixin] Bridge already running (PID $old_pid)."
+    echo "[weixin] Stop it with: ~/.codex/plugins/weixin/stop-codex.sh"
+    exit 0
   fi
-  if [ $i -eq 20 ]; then
-    echo "[weixin] App Server did not start in time." >&2
-    kill $APP_SERVER_PID 2>/dev/null
-    exit 1
-  fi
-done
+fi
 
-echo "[weixin] Installing dependencies..."
-bun install --no-summary --cwd "$SCRIPT_DIR"
+if [ ! -x "$BUN" ]; then
+  echo "[weixin] Bun not found at $BUN" >&2
+  exit 1
+fi
+
+if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
+  echo "[weixin] Installing dependencies..."
+  "$BUN" install --no-summary --cwd "$SCRIPT_DIR"
+else
+  echo "[weixin] Dependencies ready."
+fi
 
 echo "[weixin] Starting Weixin bridge..."
-CODEX_WS_URL="$WS_URL" bun "$SCRIPT_DIR/server-codex.ts"
-
-# If bridge exits, stop app-server too
-kill $APP_SERVER_PID 2>/dev/null
+echo "[weixin] Codex binary: $CODEX_EXEC"
+echo "[weixin] Stop with: ~/.codex/plugins/weixin/stop-codex.sh"
+echo "$$" > "$PID_FILE"
+exec env WEIXIN_CODEX_STANDALONE="1" CODEX_WS_URL="stdio://" CODEX_BIN="$CODEX_EXEC" "$BUN" "$SCRIPT_DIR/server-codex.ts"

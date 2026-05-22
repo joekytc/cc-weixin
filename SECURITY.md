@@ -6,7 +6,7 @@
 
 请通过以下方式私下报告：
 
-- 在 GitHub 上使用 [Security Advisory](https://github.com/qufei1993/cc-weixin/security/advisories/new) 提交
+- 在 GitHub 上使用 [Security Advisory](https://github.com/joekytc/cc-weixin/security/advisories/new) 提交
 - 或发送邮件至项目维护者
 
 我们会在收到报告后尽快确认并跟进。

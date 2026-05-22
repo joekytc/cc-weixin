@@ -6,7 +6,7 @@
 
 ### 修复
 
-- **MCP 启动**：在启动 MCP server 前补充 macOS 常见 Bun/Volta 安装路径，修复 Claude Code 未加载 shell profile 时可能找不到 `bun` 的问题 ([#14](https://github.com/qufei1993/cc-weixin/pull/14))
+- **MCP 启动**：在启动 MCP server 前补充 macOS 常见 Bun/Volta 安装路径，修复 Claude Code 未加载 shell profile 时可能找不到 `bun` 的问题 ([#14](https://github.com/joekytc/cc-weixin/pull/14))
 
 ## [0.2.0] - 2026-03-28
 
@@ -42,7 +42,7 @@
 
 ### ⚠️ 从 v0.1.1 升级注意
 
-1. **清除旧的全局 MCP 注册**（否则可能导致消息无法接收，详见 [#10](https://github.com/qufei1993/cc-weixin/issues/10)）：
+1. **清除旧的全局 MCP 注册**（否则可能导致消息无法接收，详见 [#10](https://github.com/joekytc/cc-weixin/issues/10)）：
    ```bash
    claude mcp remove weixin --scope user
    ```
@@ -58,7 +58,7 @@
 
 ### 修复
 
-- **媒体发送**：修正 `aes_key` 编码格式、添加 `encrypt_type` 字段、补充缺失的 size 字段，修复图片/视频/文件发送后微信端无法显示的问题 ([#7](https://github.com/qufei1993/cc-weixin/pull/7))
+- **媒体发送**：修正 `aes_key` 编码格式、添加 `encrypt_type` 字段、补充缺失的 size 字段，修复图片/视频/文件发送后微信端无法显示的问题 ([#7](https://github.com/joekytc/cc-weixin/pull/7))
 - **媒体发送**：每个消息项单独发送一个 `sendMessage` 请求（`item_list` 仅含一个元素），与官方实现对齐，修复图片/视频/文件在微信端不显示的问题
 - **进程退出**：修复关闭终端后 `bun server.ts` 进程不退出的问题，新增 `SIGHUP` 信号监听、stdin 关闭检测和父进程存活检查
 

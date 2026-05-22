@@ -1,9 +1,11 @@
 /**
- * Codex App Server WebSocket client.
+ * Codex App Server client.
  *
- * Communicates with a running Codex App Server via JSON-RPC 2.0 over WebSocket,
- * supporting turn/start, turn/steer, and event stream listening.
+ * Supports JSON-RPC 2.0 over either WebSocket or stdio.
  */
+
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createInterface, type Interface } from "node:readline";
 
 // --- Types ---
 
@@ -63,6 +65,8 @@ type EventCallback = (event: CodexEvent) => void;
 
 export class CodexClient {
   private ws: WebSocket | null = null;
+  private child: ChildProcessWithoutNullStreams | null = null;
+  private stdoutReader: Interface | null = null;
   private nextId = 1;
   private pending = new Map<number, {
     resolve: (result: Record<string, unknown>) => void;
@@ -70,6 +74,7 @@ export class CodexClient {
   }>();
   private eventListeners: EventCallback[] = [];
   private reconnectUrl: string | null = null;
+  private transport: "ws" | "stdio" = "ws";
   private shouldReconnect = true;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -85,19 +90,52 @@ export class CodexClient {
     return this._activeTurnId;
   }
 
-  /** Connect to Codex App Server via WebSocket */
-  async connect(wsUrl: string): Promise<void> {
-    this.reconnectUrl = wsUrl;
+  /** Connect to Codex App Server via WebSocket or stdio. */
+  async connect(endpoint: string): Promise<void> {
+    this.reconnectUrl = endpoint;
     this.shouldReconnect = true;
-    await this._connect(wsUrl);
+    this.transport = endpoint.startsWith("stdio://") ? "stdio" : "ws";
+    await this._connect(endpoint);
   }
 
-  private async _connect(wsUrl: string): Promise<void> {
+  private async _connect(endpoint: string): Promise<void> {
+    if (this.transport === "stdio") {
+      return new Promise<void>((resolve, reject) => {
+        const codexBin = process.env.CODEX_BIN || "codex";
+        const child = spawn(codexBin, ["app-server", "--listen", "stdio://"], {
+          stdio: ["pipe", "pipe", "pipe"],
+          env: process.env,
+        });
+        this.child = child;
+
+        child.once("spawn", () => {
+          process.stderr.write("[codex-bridge] Spawned Codex App Server in stdio mode.\n");
+          this.stdoutReader = createInterface({ input: child.stdout });
+          this.stdoutReader.on("line", (line) => this.handleMessage(line));
+          child.stderr.on("data", (chunk) => {
+            process.stderr.write(String(chunk));
+          });
+          child.once("close", () => {
+            this.child = null;
+            this.stdoutReader?.close();
+            this.stdoutReader = null;
+            this._activeTurnId = null;
+            process.stderr.write("[codex-bridge] Codex App Server process closed.\n");
+            this.scheduleReconnect();
+          });
+          child.once("error", (err) => {
+            reject(new Error(`Failed to spawn Codex App Server: ${err}`));
+          });
+          resolve();
+        });
+      });
+    }
+
     return new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(endpoint);
 
       ws.addEventListener("open", () => {
-        process.stderr.write(`[codex-bridge] Connected to Codex App Server: ${wsUrl}\n`);
+        process.stderr.write(`[codex-bridge] Connected to Codex App Server: ${endpoint}\n`);
         this.ws = ws;
         resolve();
       });
@@ -115,7 +153,7 @@ export class CodexClient {
 
       ws.addEventListener("error", (event) => {
         if (!this.ws) {
-          reject(new Error(`WebSocket connection failed: ${wsUrl}`));
+          reject(new Error(`WebSocket connection failed: ${endpoint}`));
         } else {
           process.stderr.write(`[codex-bridge] WebSocket error: ${event}\n`);
         }
@@ -148,6 +186,14 @@ export class CodexClient {
     if (this.ws) {
       this.ws.close();
       this.ws = null;
+    }
+    if (this.stdoutReader) {
+      this.stdoutReader.close();
+      this.stdoutReader = null;
+    }
+    if (this.child) {
+      this.child.kill();
+      this.child = null;
     }
   }
 
@@ -216,13 +262,20 @@ export class CodexClient {
 
   /** Check if connected */
   get isConnected(): boolean {
+    if (this.transport === "stdio") {
+      return this.child !== null && this.child.stdin.writable;
+    }
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 
   // --- Internal ---
 
   private async request(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (this.transport === "stdio") {
+      if (!this.child || !this.child.stdin.writable) {
+        throw new Error("Not connected to Codex App Server");
+      }
+    } else if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error("Not connected to Codex App Server");
     }
 
@@ -236,7 +289,7 @@ export class CodexClient {
 
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.ws!.send(JSON.stringify(message));
+      this.sendRaw(JSON.stringify(message));
 
       // Timeout after 30s
       setTimeout(() => {
@@ -282,7 +335,7 @@ export class CodexClient {
 
     process.stderr.write(`[codex-bridge] Auto-approved: ${req.method}\n`);
     const response = JSON.stringify({ jsonrpc: "2.0", id: req.id, result });
-    this.ws!.send(response);
+    this.sendRaw(response);
   }
 
   private handleMessage(data: string): void {
@@ -337,5 +390,20 @@ export class CodexClient {
         process.stderr.write(`[codex-bridge] Event listener error: ${err}\n`);
       }
     }
+  }
+
+  private sendRaw(payload: string): void {
+    if (this.transport === "stdio") {
+      if (!this.child || !this.child.stdin.writable) {
+        throw new Error("Not connected to Codex App Server");
+      }
+      this.child.stdin.write(`${payload}\n`);
+      return;
+    }
+
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error("Not connected to Codex App Server");
+    }
+    this.ws.send(payload);
   }
 }

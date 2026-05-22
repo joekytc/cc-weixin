@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 *.tgz
+.history
 
 # Environment & secrets
 .env

@@ -1,0 +1,58 @@
+[weixin] Dependencies ready.
+[weixin] Starting Weixin bridge...
+[weixin] Stop with: ~/.codex/plugins/weixin/stop-codex.sh
+[weixin-codex] Standalone bridge mode.
+[weixin-codex] Connecting to Codex App Server at stdio://...
+ 99 |   }
+100 | 
+101 |   private async _connect(endpoint: string): Promise<void> {
+102 |     if (this.transport === "stdio") {
+103 |       return new Promise<void>((resolve, reject) => {
+104 |         const child = spawn("codex", ["app-server", "--listen", "stdio://"], {
+                            ^
+error: Executable not found in $PATH: "codex"
+      path: "codex",
+     errno: -2,
+   syscall: "spawn codex",
+ spawnargs: [ "app-server", "--listen", "stdio://" ],
+      code: "ENOENT"
+
+      at spawn (node:child_process:667:35)
+      at spawn (node:child_process:14:39)
+      at <anonymous> (/Users/jc/Documents/openProject/cc-weixin/plugins/weixin/src/codex-client.ts:104:23)
+      at new Promise (1:11)
+      at _connect (/Users/jc/Documents/openProject/cc-weixin/plugins/weixin/src/codex-client.ts:103:14)
+      at connect (/Users/jc/Documents/openProject/cc-weixin/plugins/weixin/src/codex-client.ts:98:16)
+      at main (/Users/jc/Documents/openProject/cc-weixin/plugins/weixin/server-codex.ts:350:17)
+      at /Users/jc/Documents/openProject/cc-weixin/plugins/weixin/server-codex.ts:522:1
+
+Bun v1.3.14 (macOS arm64)
+[weixin] Dependencies ready.
+[weixin] Starting Weixin bridge...
+[weixin] Stop with: ~/.codex/plugins/weixin/stop-codex.sh
+[weixin-codex] Standalone bridge mode.
+[weixin-codex] Connecting to Codex App Server at stdio://...
+ 99 |   }
+100 | 
+101 |   private async _connect(endpoint: string): Promise<void> {
+102 |     if (this.transport === "stdio") {
+103 |       return new Promise<void>((resolve, reject) => {
+104 |         const child = spawn("codex", ["app-server", "--listen", "stdio://"], {
+                            ^
+error: Executable not found in $PATH: "codex"
+      path: "codex",
+     errno: -2,
+   syscall: "spawn codex",
+ spawnargs: [ "app-server", "--listen", "stdio://" ],
+      code: "ENOENT"
+
+      at spawn (node:child_process:667:35)
+      at spawn (node:child_process:14:39)
+      at <anonymous> (/Users/jc/Documents/openProject/cc-weixin/plugins/weixin/src/codex-client.ts:104:23)
+      at new Promise (1:11)
+      at _connect (/Users/jc/Documents/openProject/cc-weixin/plugins/weixin/src/codex-client.ts:103:14)
+      at connect (/Users/jc/Documents/openProject/cc-weixin/plugins/weixin/src/codex-client.ts:98:16)
+      at main (/Users/jc/Documents/openProject/cc-weixin/plugins/weixin/server-codex.ts:350:17)
+      at /Users/jc/Documents/openProject/cc-weixin/plugins/weixin/server-codex.ts:522:1
+
+Bun v1.3.14 (macOS arm64)

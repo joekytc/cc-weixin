@@ -8,7 +8,7 @@
 2. 克隆仓库并安装依赖：
 
 ```bash
-git clone https://github.com/qufei1993/cc-weixin.git
+git clone https://github.com/joekytc/cc-weixin.git
 cd cc-weixin/plugins/weixin
 bun install
 ```

@@ -10,11 +10,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/qufei1993/cc-weixin.git",
+    "url": "https://github.com/joekytc/cc-weixin.git",
     "directory": "plugins/weixin"
   },
-  "homepage": "https://github.com/qufei1993/cc-weixin",
-  "bugs": "https://github.com/qufei1993/cc-weixin/issues",
+  "homepage": "https://github.com/joekytc/cc-weixin",
+  "bugs": "https://github.com/joekytc/cc-weixin/issues",
   "author": "qufei1993",
   "keywords": [
     "weixin",

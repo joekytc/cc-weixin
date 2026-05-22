@@ -130,7 +130,7 @@ cc-weixin/
 
 ```bash
 # 1. 添加市场并安装插件
-/plugin marketplace add qufei1993/cc-weixin
+/plugin marketplace add joekytc/cc-weixin
 /plugin install weixin@cc-weixin
 
 # 2. 扫码连接微信
@@ -158,7 +158,7 @@ claude --dangerously-load-development-channels server:weixin
 
 ```bash
 # 1. Clone 仓库并配置本地 marketplace（只需一次）
-git clone https://github.com/qufei1993/cc-weixin.git ~/cc-weixin
+git clone https://github.com/joekytc/cc-weixin.git ~/cc-weixin
 # 编辑 ~/.agents/plugins/marketplace.json，path 指向 ~/cc-weixin/plugins/weixin
 
 # 2. 在 Codex 中安装插件（只需一次）

@@ -3,15 +3,15 @@
  * WeChat Bridge MCP Server for Codex.
  *
  * Hybrid server: acts as a stdio MCP Server (providing tools to Codex agent)
- * while internally connecting to Codex App Server via WebSocket to inject
- * WeChat messages as turns.
+ * while internally connecting to Codex App Server to inject WeChat messages
+ * as turns.
  *
- * Requires Codex running with: codex app-server --listen ws://127.0.0.1:4500
- * Configure via CODEX_WS_URL env var (default: ws://127.0.0.1:4500).
+ * Starts Codex App Server through stdio by default. Configure via
+ * CODEX_WS_URL env var. WebSocket endpoints remain supported for older
+ * Codex builds.
  *
  * Known limitations:
  * - Codex TUI does not display turns injected by this bridge (Issue #15320)
- * - Must start Codex with --listen flag (no auto-discovery)
  * - Single-user routing: only the last active WeChat user gets responses
  */
 
@@ -31,7 +31,7 @@ import { getConfig, sendTyping } from "./src/api.js";
 import { TypingStatus } from "./src/types.js";
 import { CodexClient, type CodexEvent } from "./src/codex-client.js";
 
-const CODEX_WS_URL = process.env.CODEX_WS_URL || "ws://127.0.0.1:4500";
+const CODEX_WS_URL = process.env.CODEX_WS_URL || "stdio://";
 const VERSION = "0.2.1";
 
 // --- Single-instance lock ---
@@ -313,9 +313,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 async function main(): Promise<void> {
   // Standalone mode: running directly in a terminal (not spawned by Codex as a plugin).
-  // In this mode we skip the MCP server and just run the poll loop + WebSocket bridge.
+  // In this mode we skip the MCP server and just run the poll loop + Codex bridge.
   // Logs go directly to stderr (visible in terminal).
-  const standalone = process.stdin.isTTY === true;
+  const standalone = process.env.WEIXIN_CODEX_STANDALONE === "1" || process.stdin.isTTY === true;
 
   if (standalone) {
     process.stderr.write("[weixin-codex] Standalone bridge mode.\n");
@@ -325,7 +325,7 @@ async function main(): Promise<void> {
     }
   } else {
     // Plugin mode: serve MCP tools only. The bridge runs via start-codex.sh (standalone mode).
-    // Do NOT run the poll loop or WebSocket bridge here — that would conflict with the standalone instance.
+    // Do NOT run the poll loop or Codex bridge here — that would conflict with the standalone instance.
     const transport = new StdioServerTransport();
     await server.connect(transport);
     return;
@@ -351,7 +351,7 @@ async function main(): Promise<void> {
   } catch {
     process.stderr.write(
       `[weixin-codex] Failed to connect to Codex App Server at ${CODEX_WS_URL}.\n` +
-      `[weixin-codex] Make sure Codex is running with: codex app-server --listen ${CODEX_WS_URL}\n`,
+      `[weixin-codex] Make sure Codex is installed and runnable.\n`,
     );
     // Continue running — MCP tools still work, bridge is just unavailable
   }
@@ -434,27 +434,30 @@ async function main(): Promise<void> {
   process.on("SIGTERM", shutdown);
   process.on("SIGHUP", shutdown);
 
-  // Periodically check if Codex App Server is still reachable
-  const wsUrlObj = new URL(CODEX_WS_URL);
-  const appServerHealthUrl = `http://${wsUrlObj.host}/healthz`;
-  let consecutiveFailures = 0;
-  const parentCheck = setInterval(async () => {
-    try {
-      const res = await fetch(appServerHealthUrl, { signal: AbortSignal.timeout(3000) });
-      if (res.ok) {
-        consecutiveFailures = 0;
-      } else {
+  let parentCheck: ReturnType<typeof setInterval> | null = null;
+  if (CODEX_WS_URL.startsWith("ws://") || CODEX_WS_URL.startsWith("wss://")) {
+    // Periodically check if a legacy WebSocket App Server is still reachable.
+    const wsUrlObj = new URL(CODEX_WS_URL);
+    const appServerHealthUrl = `${wsUrlObj.protocol === "wss:" ? "https" : "http"}://${wsUrlObj.host}/healthz`;
+    let consecutiveFailures = 0;
+    parentCheck = setInterval(async () => {
+      try {
+        const res = await fetch(appServerHealthUrl, { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+          consecutiveFailures = 0;
+        } else {
+          consecutiveFailures++;
+        }
+      } catch {
         consecutiveFailures++;
       }
-    } catch {
-      consecutiveFailures++;
-    }
-    if (consecutiveFailures >= 3) {
-      process.stderr.write("[weixin-codex] App Server unreachable for 15s, shutting down...\n");
-      clearInterval(parentCheck);
-      shutdown();
-    }
-  }, 5000);
+      if (consecutiveFailures >= 3) {
+        process.stderr.write("[weixin-codex] App Server unreachable for 15s, shutting down...\n");
+        if (parentCheck) clearInterval(parentCheck);
+        shutdown();
+      }
+    }, 5000);
+  }
 
   process.stderr.write("[weixin-codex] Starting WeChat poll loop...\n");
 
@@ -511,7 +514,7 @@ async function main(): Promise<void> {
     abortSignal: controller.signal,
   });
 
-  clearInterval(parentCheck);
+  if (parentCheck) clearInterval(parentCheck);
   await server.close();
   process.exit(0);
 }

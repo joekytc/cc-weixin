@@ -13,14 +13,16 @@ Manage your WeChat connection.
 
 **IMPORTANT**: All commands must run from the **plugin root directory** (where `package.json` is), NOT from the skills directory.
 
+For Codex, the plugin root is available at `~/.codex/plugins/weixin`.
+
 Run as a single Bash command:
 ```bash
-cd "${CLAUDE_PLUGIN_ROOT:-$(dirname $(dirname $0))}" && bun install --no-summary 1>&2 && bun src/cli-login.ts
+cd ~/.codex/plugins/weixin && bun install --no-summary 1>&2 && bun src/cli-login.ts
 ```
 
 If the user provides `clear` as an argument, append `clear`:
 ```bash
-cd "${CLAUDE_PLUGIN_ROOT:-$(dirname $(dirname $0))}" && bun install --no-summary 1>&2 && bun src/cli-login.ts clear
+cd ~/.codex/plugins/weixin && bun install --no-summary 1>&2 && bun src/cli-login.ts clear
 ```
 
 The script handles everything: checking existing accounts, displaying the QR code, polling for scan result, and saving credentials.
@@ -44,7 +46,7 @@ Do NOT mention `claude --channels plugin:weixin@cc-weixin` (without `--dangerous
 
 **Codex:**
 ```
-~/cc-weixin/plugins/weixin/start-codex.sh
+~/.codex/plugins/weixin/start-codex.sh
 ```
 This starts both the Codex App Server and the WeChat bridge in one command. Run it in a terminal and keep it running. WeChat conversations are processed in the background — Codex TUI does not display them directly.
 

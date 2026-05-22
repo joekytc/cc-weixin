@@ -7,7 +7,7 @@
 在 Claude Code 中添加市场并安装插件：
 
 ```
-/plugin marketplace add qufei1993/cc-weixin
+/plugin marketplace add joekytc/cc-weixin
 /plugin install weixin@cc-weixin
 ```
 
@@ -16,7 +16,7 @@
 **开发者本地安装：**
 
 ```bash
-git clone https://github.com/qufei1993/cc-weixin.git
+git clone https://github.com/joekytc/cc-weixin.git
 ```
 
 在 Claude Code 中：
